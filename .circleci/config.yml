@@ -9,9 +9,7 @@ jobs:
     lint-app:
         docker:
             - image: python:3.7.3-stretch
-
         working_directory: ~/repo
-
         steps:
             - checkout
             - restore_cache:
@@ -39,7 +37,7 @@ jobs:
                 
     build-test-push:
         machine: true
-        working_directory: ~/app
+        working_directory: ~/repo
         steps:
             - checkout
             - run:
@@ -56,11 +54,50 @@ jobs:
                     echo "Docker path $dockerpath"
                     docker image tag udacity-capstone $dockerpath
                     docker image push $dockerpath
-          
+    
+    create-deployment:
+        docker:
+            - image: python:3.7.3-stretch
+        parameters:
+          cluster-name:
+            description: |
+              Cluster name
+            type: string
+        steps:
+          - checkout
+          - kubernetes/install
+          - aws-eks/update-kubeconfig-with-authenticator:
+              cluster-name: << parameters.cluster-name >>
+              install-kubectl: true
+          - kubernetes/create-or-update-resource:
+              get-rollout-status: true
+              resource-file-path: deployment.yml
+              resource-name: deployment/udacity-capstone
+              
 workflows:
-  default:
-    jobs:
-      - lint-app
-      - build-test-push:
+    default:
+        jobs:
+        - lint-app
+        - build-test-push:
             requires:
                 - "lint-app"
+        - aws-eks/create-cluster:
+            cluster-name: udacity-capstone
+            requires:
+                -   "build-test-push"
+        - create-deployment:
+            cluster-name: udacity-capstone
+            requires: 
+                - "aws-eks/create-cluster"
+        - aws-eks/update-container-image:
+            cluster-name: udacity-capstone
+            container-image-updates: udacity-capstone=${DOCKER_LOGIN}/capstone
+            post-steps:
+                - kubernetes/delete-resource:
+                    resource-names: udacity-capstone
+                    resource-types: deployment
+                    wait: true
+            record: true
+            requires:
+                  - create-deployment
+            resource-name: deployment/udacity-capstone
