@@ -36,8 +36,31 @@ jobs:
                 paths:
                     - ./venv
                 key: v1-dependencies-{{ checksum "requirements.txt" }}
+                
+    build-test-push:
+        machine: true
+        working_directory: ~/app
+        steps:
+            - checkout
+            - run:
+                name: Build image
+                command: |
+                    docker build --tag=udacity-capstone .
+                    docker image ls
+            - run:
+                name: Push image to docker
+                command: |
+                    dockerpath="${DOCKER_LOGIN}/udacity-capstone"
+                    echo "Docker username ${DOCKER_LOGIN}"
+                    docker login --username ${DOCKER_LOGIN} --password ${DOCKER_PASSWORD}
+                    echo "Docker path $dockerpath"
+                    docker image tag udacity-capstone $dockerpath
+                    docker image push $dockerpath
           
 workflows:
   default:
     jobs:
       - lint-app
+      - build-test-push:
+            requires:
+                - "lint-app"
